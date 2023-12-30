@@ -1,0 +1,46 @@
+func (f *Filter) Include(remote string, size int64, modTime time.Time, metadata fs.Metadata) bool {
+    // filesFrom takes precedence
+    if f.files != nil {
+        _, include := f.files[remote]
+        if !include {
+            fs.Debugf(remote, "Excluded due to filesFrom filter")
+        }
+        return include
+    }
+    if !f.ModTimeFrom.IsZero() && modTime.Before(f.ModTimeFrom) {
+        fs.Debugf(remote, "Excluded due to ModTimeFrom filter")
+        return false
+    }
+    if !f.ModTimeTo.IsZero() && modTime.After(f.ModTimeTo) {
+        fs.Debugf(remote, "Excluded due to ModTimeTo filter")
+        return false
+    }
+    if f.Opt.MinSize >= 0 && size < int64(f.Opt.MinSize) {
+        fs.Debugf(remote, "Excluded due to MinSize filter")
+        return false
+    }
+    if f.Opt.MaxSize >= 0 && size > int64(f.Opt.MaxSize) {
+        fs.Debugf(remote, "Excluded due to MaxSize filter")
+        return false
+    }
+    if f.metaRules.len() > 0 {
+        metadatas := make([]string, 0, len(metadata)+1)
+        for key, value := range metadata {
+            metadatas = append(metadatas, fmt.Sprintf("%s=%s", key, value))
+        }
+        if len(metadata) == 0 {
+            // If there is no metadata, add a null one
+            // otherwise the default action isn't taken
+            metadatas = append(metadatas, "\x00=\x00")
+        }
+        if !f.metaRules.includeMany(metadatas) {
+            fs.Debugf(remote, "Excluded due to metadata filter")
+            return false
+        }
+    }
+    if !f.IncludeRemote(remote) {
+        fs.Debugf(remote, "Excluded due to remote filter")
+        return false
+    }
+    return true
+}
